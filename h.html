@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Shihab AI ChatBoard</title>
+</head>
+<body style="margin: 0; background: #0f172a; font-family: 'Segoe UI', sans-serif; color: #e2e8f0; height: 100vh; display: flex;">
+
+  <!-- 🧠 Sidebar -->
+  <div style="width: 240px; background: #1e293b; padding: 20px; overflow-y: auto; display: flex; flex-direction: column;">
+    <h2 style="color: #38bdf8; text-align: center;">🧠 Chat History</h2>
+    <div id="historyBox" style="flex: 1; font-size: 14px; margin-top: 15px;"></div>
+    <button onclick="clearHistory()" 
+      style="margin-top: 15px; padding: 10px; background: #ef4444; color: white; border: none; border-radius: 10px; cursor: pointer;">
+      🗑️ Clear History
+    </button>
+  </div>
+
+  <!-- 💬 Chat Area -->
+  <div style="flex: 1; display: flex; flex-direction: column; background: #0f172a;">
+
+    <!-- Header -->
+    <div style="background: #1e293b; padding: 20px; text-align: center; border-bottom: 1px solid #334155;">
+      <h1 style="margin: 0; color: #38bdf8; font-size: 26px;">💬 Shihab AI ChatBoard</h1>
+    </div>
+
+    <!-- Chat Window -->
+    <div id="chat" style="flex: 1; padding: 20px; overflow-y: auto;">
+      <!-- Chat bubbles added here -->
+    </div>
+
+    <!-- Input Area -->
+    <div style="display: flex; padding: 15px; background: #1e293b; border-top: 1px solid #334155;">
+      <input id="userInput" type="text" placeholder="Type your message..." 
+        style="flex: 1; padding: 14px; font-size: 16px; border-radius: 12px; border: none; outline: none; background: #0f172a; color: #f8fafc; margin-right: 10px;">
+      <button onclick="callGemini()" 
+        style="padding: 14px 20px; background: #38bdf8; color: white; border: none; border-radius: 12px; font-size: 16px; cursor: pointer;">
+        Send
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const historyBox = document.getElementById('historyBox');
+
+    function formatTime() {
+      const now = new Date();
+      return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addMessage(text, sender, save = true) {
+      const wrapper = document.createElement('div');
+      wrapper.style.margin = '10px 0';
+      wrapper.style.display = 'flex';
+      wrapper.style.flexDirection = 'column';
+      wrapper.style.alignItems = sender === 'user' ? 'flex-end' : 'flex-start';
+
+      const bubble = document.createElement('div');
+      bubble.style.maxWidth = '75%';
+      bubble.style.padding = '14px';
+      bubble.style.borderRadius = '12px';
+      bubble.style.whiteSpace = 'pre-wrap';
+      bubble.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+      bubble.style.background = sender === 'user' ? '#2563eb' : '#334155';
+      bubble.style.color = '#f8fafc';
+      bubble.textContent = text;
+
+      const time = document.createElement('span');
+      time.textContent = formatTime();
+      time.style.fontSize = '12px';
+      time.style.marginTop = '4px';
+      time.style.color = '#94a3b8';
+
+      wrapper.appendChild(bubble);
+      wrapper.appendChild(time);
+      chat.appendChild(wrapper);
+      chat.scrollTop = chat.scrollHeight;
+
+      if (save) saveToHistory(text, sender);
+    }
+
+    function saveToHistory(text, sender) {
+      const history = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+      history.push({ text, sender });
+      localStorage.setItem('chatHistory', JSON.stringify(history));
+      renderHistoryBox();
+    }
+
+    function loadChatHistory() {
+      const history = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+      history.forEach(entry => addMessage(entry.text, entry.sender, false));
+    }
+
+    function renderHistoryBox() {
+      const history = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+      historyBox.innerHTML = '';
+      let count = 0;
+      history.forEach((entry, i) => {
+        if (entry.sender === 'user') {
+          count++;
+          const msg = document.createElement('div');
+          msg.textContent = `#${count}: ${entry.text.slice(0, 25)}...`;
+          msg.style.margin = '6px 0';
+          msg.style.padding = '8px 10px';
+          msg.style.borderRadius = '6px';
+          msg.style.background = '#0f172a';
+          msg.style.cursor = 'pointer';
+          msg.title = 'Click to reuse message';
+          msg.onclick = () => {
+            document.getElementById('userInput').value = entry.text;
+          };
+          historyBox.appendChild(msg);
+        }
+      });
+    }
+
+    function clearHistory() {
+      if (confirm('Clear all chat history?')) {
+        localStorage.removeItem('chatHistory');
+        chat.innerHTML = '';
+        renderHistoryBox();
+      }
+    }
+
+    async function callGemini() {
+      const input = document.getElementById('userInput');
+      const userText = input.value.trim();
+      if (!userText) return;
+
+      addMessage(userText, 'user');
+      input.value = '';
+
+      const apiKey = 'AIzaSyARRhr6g3afMLaYFvuK6T9oyJLafQDkSN4';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+      addMessage("⏳ Thinking...", 'ai', false);
+
+      const payload = {
+        contents: [{
+          parts: [{ text: userText }]
+        }]
+      };
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        chat.lastChild.remove(); // remove "Thinking..."
+
+        if (data.candidates) {
+          const reply = data.candidates[0].content.parts[0].text;
+          addMessage(reply, 'ai');
+        } else {
+          addMessage("❌ Error: No valid reply received.", 'ai');
+        }
+      } catch (err) {
+        chat.lastChild.remove();
+        addMessage("❌ Error: " + err.message, 'ai');
+      }
+    }
+
+    // Run on load
+    loadChatHistory();
+    renderHistoryBox();
+
+    document.getElementById('userInput').addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') callGemini();
+    });
+  </script>
+
+</body>
+</html>
